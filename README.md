@@ -169,5 +169,6 @@ also run against an installation on another machine.
 
 ## License
 
-The code in this repository is MIT licensed (see [LICENSE](LICENSE)). The SpaceTime Docker
-images are free of charge, under their own terms (see [LICENSE](LICENSE)).
+The code in this repository is MIT licensed (see [LICENSE](LICENSE)). The license does not
+cover the SpaceTime software itself, which is available free of charge as Docker images
+(spacetimehub/*).
