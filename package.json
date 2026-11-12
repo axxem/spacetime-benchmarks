@@ -1,0 +1,26 @@
+{
+  "name": "spacetime-benchmarks",
+  "version": "1.0.0",
+  "description": "Benchmarks for a local SpaceTime installation: natural-language automation with an LLM, and switching up to 10,000 lamps through an entity connector.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "seed": "node scripts/seed.ts",
+    "test:llm": "node --test --test-concurrency=1 test/llm-usecases.test.ts",
+    "test:lamps": "node --test --test-concurrency=1 test/lamps.test.ts",
+    "sweep": "node scripts/sweep.ts",
+    "summarize": "node scripts/summarize.ts",
+    "check": "tsc -p ."
+  },
+  "dependencies": {
+    "cron-parser": "5.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3"
+  }
+}

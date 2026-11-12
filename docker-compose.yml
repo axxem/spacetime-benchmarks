@@ -1,0 +1,134 @@
+# SpaceTime on one machine, for the benchmarks in this repository. The same services as the
+# product's own docker-compose.yml, without the Traefik reverse proxy (HTTPS on ports 80/443):
+# everything is reached on localhost ports instead.
+#   server  http://localhost:8010   REST API (the tests talk to this)
+#   agent   http://localhost:8030   LLM agent (chat)
+#   portal  http://localhost:3000   web user interface
+# Databases and file storage aren't published on host ports, so they can't clash with ones
+# already running on your machine. Settings come from .env in this directory (see .env.example).
+services:
+  mongo:
+    image: mongo:4.4
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: idata
+    volumes:
+      - ${DATA:-.}/mongo:/data/db
+  postgres:
+    # TimescaleDB's image, not plain Postgres: the property log is a TimescaleDB hypertable.
+    image: timescale/timescaledb:2.26.1-pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: spacetime
+      POSTGRES_HOST_AUTH_METHOD: trust   # disables password auth entirely
+    volumes:
+      - ${DATA:-.}/postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  # RustFS runs as uid 10001, but Docker creates a missing bind-mount directory as root: this
+  # one-shot container gives the directory to 10001 on every `up`.
+  rustfs-perms:
+    image: alpine:latest
+    command: ["sh", "-c", "mkdir -p /data && chown -R 10001:10001 /data"]
+    volumes:
+      - ${DATA:-.}/rustfs:/data
+  rustfs:
+    image: rustfs/rustfs:latest
+    restart: unless-stopped
+    depends_on:
+      rustfs-perms:
+        condition: service_completed_successfully
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-spacetime}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-spacetime}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+    volumes:
+      - ${DATA:-.}/rustfs:/data
+  server:
+    image: ${REGISTRY:-spacetimehub}/server:${VERSION:-latest}
+    restart: unless-stopped
+    pull_policy: ${PULL_POLICY:-always}
+    ports:
+      - "8010:80"
+    environment:
+      MONGODB_URI: mongodb://mongo/idata
+      POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/spacetime
+      AGENT_URL: http://agent
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-spacetime}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-spacetime}
+      RUSTFS_BUCKET: file
+      MODE: production
+      JWT: "false"
+      LOGLEVEL: info
+      TZ: Europe/Amsterdam
+      LATITUDE: 51.41191
+      LONGITUDE: 5.44969
+    # Lets the server reach services on the host as host.docker.internal - built in on Docker
+    # Desktop, needed on Linux. The published benchmarks run their mock lamp service there.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      -  ${DATA:-.}/server:/usr/src/app/data
+    depends_on:
+      mongo:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+  portal:
+    image: ${REGISTRY:-spacetimehub}/portal:${VERSION:-latest}
+    restart: unless-stopped
+    pull_policy: ${PULL_POLICY:-always}
+    ports:
+      - "3000:80"
+  forms:
+    image: ${REGISTRY:-spacetimehub}/forms:${VERSION:-latest}
+    restart: unless-stopped
+    pull_policy: ${PULL_POLICY:-always}
+    ports:
+      - "3002:80"
+  modeler:
+    image: ${REGISTRY:-spacetimehub}/modeler:${VERSION:-latest}
+    restart: unless-stopped
+    pull_policy: ${PULL_POLICY:-always}
+    ports:
+      - "3005:80"
+  draw:
+    image: ${REGISTRY:-spacetimehub}/draw:${VERSION:-latest}
+    restart: unless-stopped
+    pull_policy: ${PULL_POLICY:-always}
+    ports:
+      - "3006:80"
+  agent:
+    image: ${REGISTRY:-spacetimehub}/agent:${VERSION:-latest}
+    restart: unless-stopped
+    pull_policy: ${PULL_POLICY:-always}
+    ports:
+      - "8030:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/spacetime
+      SERVER_URL: http://server
+      COHERE_API_KEY: ${COHERE_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      LLM_PROVIDER: ${LLM_PROVIDER:-cohere}
+      LLM_MODEL: ${LLM_MODEL:-}
+      # The entity/property toolset (the default 'topic' is the older dotted-topic state tools).
+      ENTITY: ${ENTITY:-entity}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
