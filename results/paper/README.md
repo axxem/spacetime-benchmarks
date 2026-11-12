@@ -24,9 +24,10 @@ from 28 October to 2 November 2026. One JSON line per use case per run: `status`
 mean round trip time per model (Table 6) from these files.
 
 **How they were measured.** With the use case test suite that `test/llm-usecases.test.ts` was
-ported from: the same prompts and checks, run with `bun:test` against SpaceTime 1.4.0 (server
-and agent run from source) on a MacBook Pro (Apple M5 Pro, 48 GB unified memory). The local
-models ran in Ollama 0.40.11 on the same machine. Model parameters (paper, Table 4):
+ported from: the same prompts and checks, run with `bun:test` against the development version of
+SpaceTime that preceded release 1.5.0 (server and agent run from source, git commit `6ff41ae4`),
+on a MacBook Pro (Apple M5 Pro, 48 GB unified memory). The local models ran in Ollama 0.40.11
+on the same machine. Model parameters (paper, Table 4):
 
 | Model | Provider | Quantization | Temperature | Top p | Top k |
 |---|---|---|---:|---:|---:|
@@ -35,6 +36,15 @@ models ran in Ollama 0.40.11 on the same machine. Model parameters (paper, Table
 | Qwen3.8:27B, qwen3:30b-instruct | Ollama | Q4_K_M | 0.7 | 0.9 | 20 |
 | glm-4.7-flash, devstral-small-2 | Ollama | Q4_K_M | 0.7 | 0.9 | 40 |
 | bonsai-2:27b, bonsai-2 (9b) | Ollama | Q2_0 | 0.7 | 0.9 | 20 |
+
+**Reproducing them.** No Docker image of that development version was released; release 1.5.0
+is the first one that contains it (the earlier 1.4.0 image on Docker Hub is from June 2026 and
+much older). Between the benchmark runs and 1.5.0, the agent's system prompt and the tools and
+tool descriptions presented to the LLM are unchanged. What changed is how the server stores and
+runs the generated automations (moved from MongoDB to Postgres) and the agent's document store,
+which these use cases don't use. A run against 1.5.0 therefore gives the LLMs the same input,
+but LLM output varies between runs: compare pass rates over several runs (`npm run sweep`), not
+single results.
 
 These logs have no `runId`: each run wrote one line per use case, in order. In the
 devstral-small-2 log, line 28 is the 3rd run of *Turn off all pumps*, which failed before its
@@ -52,7 +62,8 @@ shows 4 and 6 results for those two prompts.
 | 10,000 | 297 ms | 11.8 s | 2,262 | 3.6 s | 10,000 |
 
 Transcribed from the paper: no raw log was kept of these runs. They were measured with the
-server running natively (Node.js 26.7, Postgres 18) on the same MacBook Pro, with the mock lamp
+development version that became release 1.5.0 (`setMany` is new in it), the server running
+natively (Node.js 26.7, Postgres 18) on the same MacBook Pro, with the mock lamp
 service (2 s latency) in the test's own process and macOS `kern.ipc.somaxconn` raised to 16384.
 Script B ran without a cap on concurrent commands (`maxConcurrency` -1).
 
