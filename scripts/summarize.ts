@@ -1,7 +1,8 @@
 // npm run summarize [-- <results directory>...]: Markdown tables of the results in
 // results/local (default) or the given directories, e.g. results/paper results/local to put
 // the paper's results next to your own.
-//   LLM:   per LLM and command, the pass rate over all runs and the median chat round trip
+//   LLM:   per LLM and command, the pass rate over all runs and the median chat round trip;
+//          per LLM the total and mean round trip
 //   lamps: per mode and number of lamps, the median times over all runs
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { ROOT } from '../lib/env.ts'
@@ -29,12 +30,16 @@ for (const dir of dirs) {
     for (const file of files.filter(f => f.startsWith('llm-') && f.endsWith('.jsonl')).sort()) {
         const rows = readLines(`${path}/${file}`)
         const llm = `${rows[0]?.llmProvider} ${rows[0]?.llmModel ?? ''}`.trim()
-        const runs = new Set(rows.map(r => r.runId)).size
+        const byMessage = new Map<string, any[]>()
+        for (const r of rows) byMessage.set(r.message, [...(byMessage.get(r.message) ?? []), r])
+        // Results from before runId was recorded (results/paper): every run has one line per
+        // command.
+        const runs = rows.some(r => r.runId)
+            ? new Set(rows.map(r => r.runId)).size
+            : Math.round(rows.length / byMessage.size)
         console.log(`\n## LLM: ${llm} (${runs} runs)\n`)
         console.log('| Command | Passed | Pass rate | Median s |')
         console.log('|---|---:|---:|---:|')
-        const byMessage = new Map<string, any[]>()
-        for (const r of rows) byMessage.set(r.message, [...(byMessage.get(r.message) ?? []), r])
         let passed = 0
         for (const [message, results] of byMessage) {
             const pass = results.filter(r => r.status === 'pass').length
@@ -42,6 +47,8 @@ for (const dir of dirs) {
             console.log(`| ${message || '(no chat request)'} | ${pass}/${results.length} | ${fmt(100 * pass / results.length, 0)}% | ${fmt(median(results.map(r => r.durationSeconds)))} |`)
         }
         console.log(`| **All** | ${passed}/${rows.length} | ${fmt(100 * passed / rows.length, 0)}% | ${fmt(median(rows.map(r => r.durationSeconds)))} |`)
+        const total = rows.reduce((sum, r) => sum + r.durationSeconds, 0)
+        console.log(`\nChat round trips: ${fmt(total)} s in total, ${fmt(total / rows.length, 2)} s per command on average.`)
     }
 
     if (files.includes('lamps.jsonl')) {

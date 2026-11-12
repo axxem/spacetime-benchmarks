@@ -156,7 +156,7 @@ docker-compose.yml     SpaceTime on one machine (no reverse proxy; databases not
 test/                  the benchmarks (node:test)
 lib/                   HTTP client, campus dataset, mock lamp service, result recording
 scripts/               seed, sweep, summarize
-results/paper/         the results reported in the paper, with their environment files
+results/paper/         the results reported in the paper (see its README)
 results/local/         your results (not committed)
 ```
 
