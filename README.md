@@ -84,14 +84,20 @@ It is safe to run again. `npm run seed -- --demo` or `-- --campus` loads only on
 
 ```sh
 npm run test:lamps     # about 1-2 minutes
-npm run test:llm       # about 3-5 minutes, makes 10 requests to the LLM
+npm run test:llm       # about 3-5 minutes, makes 11 requests to the LLM
 ```
 
 Each run prints its results and appends them to `results/local/`:
 
-- `lamps.jsonl` and `llm-<provider>-<model>.jsonl`: one JSON line per test
+- `lamps.jsonl` and `llm-<provider>-<model>.jsonl`: one JSON line per test. For the LLM, this
+  includes the tools it called (`tools`), the one the use case should be done with
+  (`expectedTool`), and whether it chose that one (`rightTool`). Older agent releases don't
+  report their tool calls; `tools` and `rightTool` are then `null`.
 - `environment-<run>.json`: the machine, Node and Docker versions, and the image digests of the
   installation the run measured
+
+The LLM test starts with a question that isn't logged (*What is the capital of Laos?*), so the
+model is loaded before the first timed use case.
 
 LLM output varies from run to run, so judge an LLM by its pass rate over several runs.
 `npm run sweep` runs the LLM benchmark 5 times (`REPEAT=10 npm run sweep` for 10). To compare

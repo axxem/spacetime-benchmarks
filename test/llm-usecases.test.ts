@@ -5,7 +5,8 @@
 //
 // The LLM is the one the agent container runs (LLM_PROVIDER/LLM_MODEL in .env, applied with
 // docker compose up -d). Each test logs one line to results/local/llm-<provider>[-<model>].jsonl:
-// pass/fail, the round trip time of the chat request, the reply and the generated script.
+// pass/fail, the round trip time of the chat request, the reply and the generated script, and
+// which tools the LLM called. A first, unlogged request loads the LLM (see 'loads the LLM').
 // LLM output varies between runs: compare pass rates over several runs (npm run sweep).
 import { before, describe, it } from 'node:test'
 import { CronExpressionParser } from 'cron-parser'
@@ -41,6 +42,17 @@ let currentCommandMessage = ''
 let currentCommandSeconds = 0
 let currentCommandResponse = ''
 let currentCommandScript = ''
+// undefined: the agent doesn't report its tool calls (data.tools; older releases don't)
+let currentCommandTools: string[] | undefined
+
+// The tools that change something. Lookups (search_entity, get_properties, ...) the LLM may
+// call along the way don't count when judging whether it picked the right tool.
+const ACTION_TOOLS = ['set_property_value', 'add_property_value', 'set_property_by_filter', 'create_entity', 'create_automation', 'create_automation_script']
+
+function rightTool(expected: string, called: string[]): boolean {
+    const actions = [...new Set(called.filter(t => ACTION_TOOLS.includes(t)))]
+    return actions.length === 1 && actions[0] === expected
+}
 
 async function timedChat(body: { message: string, sessionId?: string }): Promise<Response> {
     currentCommandMessage = (body as any).message ?? ''
@@ -59,6 +71,7 @@ async function timedChat(body: { message: string, sessionId?: string }): Promise
     try {
         const data: any = await res.clone().json()
         currentCommandResponse = data?.data?.message ?? ''
+        currentCommandTools = Array.isArray(data?.data?.tools) ? data.data.tools : undefined
         // Immediate-action tools (set_property_value/add_property_value/set_property_by_filter)
         // run once and are never persisted anywhere - agent.ts's chat() is the only place their
         // script is visible, via this same chat response (see entity-tools.ts's
@@ -89,21 +102,34 @@ async function timedChat(body: { message: string, sessionId?: string }): Promise
 // own timer, a little before node:test's, rejects first and logs it as 'fail'.
 const TIMEOUT_LOG_MARGIN_MS = 1000
 
-function benchmarked(name: string, fn: () => Promise<void>, timeout?: number) {
+// expectedTool is the action tool the use case should be done with (see ACTION_TOOLS); whether
+// the LLM chose it is logged and printed, but doesn't decide pass/fail - the effect does.
+function benchmarked(name: string, expectedTool: string, fn: () => Promise<void>, timeout?: number) {
     it(name, { timeout }, async () => {
         currentCommandMessage = ''
         currentCommandSeconds = 0
         currentCommandResponse = ''
         currentCommandScript = ''
-        const log = (status: 'pass' | 'fail') => appendResult(logFile(), {
-            status,
-            message: currentCommandMessage,
-            llmProvider: llm.provider,
-            llmModel: llm.model,
-            durationSeconds: Number(currentCommandSeconds.toFixed(3)),
-            response: currentCommandResponse,
-            script: currentCommandScript,
-        })
+        currentCommandTools = undefined
+        const log = (status: 'pass' | 'fail') => {
+            const tools = currentCommandTools
+            const right = tools ? rightTool(expectedTool, tools) : null
+            console.log(tools
+                ? `Tools: ${tools.join(', ') || '(none)'} - expected ${expectedTool}: ${right ? 'right tool' : 'WRONG TOOL'}`
+                : `Tools: not reported by this agent version - expected ${expectedTool}`)
+            appendResult(logFile(), {
+                status,
+                message: currentCommandMessage,
+                llmProvider: llm.provider,
+                llmModel: llm.model,
+                durationSeconds: Number(currentCommandSeconds.toFixed(3)),
+                response: currentCommandResponse,
+                script: currentCommandScript,
+                expectedTool,
+                tools: tools ?? null,
+                rightTool: right,
+            })
+        }
         let timer: NodeJS.Timeout | undefined
         try {
             await (timeout ? Promise.race([
@@ -244,7 +270,23 @@ describe('Use cases', () => {
     // "it" to the garden pump, without either test having to name it explicitly.
     let sessionId: string | undefined
 
-    benchmarked('turns on the garden pump', async () => {
+    // Not a use case, and not logged: makes the LLM (Ollama in particular) load the model
+    // before the first use case, so after switching models that one's time doesn't include
+    // loading it. Fails here when the model can't be loaded (e.g. LLM_MODEL names one that
+    // isn't pulled).
+    it('loads the LLM', { timeout: 300000 }, async () => {
+        await throttle(llm.provider)
+        const res = await fetch(CHAT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: 'What is the capital of Laos?' }),
+        })
+        const data: any = await res.json().catch(() => ({}))
+        expect(data.error ?? '').toBe('')
+        expect(res.status).toBe(200)
+    })
+
+    benchmarked('turns on the garden pump', 'set_property_value', async () => {
         await setPropertyValue('Garden pump', 'state', 'off')
 
         const res = await timedChat({ message: `Turn on the garden pump` })
@@ -256,7 +298,7 @@ describe('Use cases', () => {
         expect(await getPropertyValue('Garden pump', 'state')).toBe('on')
     }, 120000)
 
-    benchmarked('turn on garden pump if not raining and garden moisture 30% or less', async () => {
+    benchmarked('turn on garden pump if not raining and garden moisture 30% or less', 'create_automation', async () => {
         // An AND of two comparisons on a single action fits create_automation's structured
         // conditions - no "otherwise", no OR - so this should route there, not to
         // create_automation_script. No time of day at all means starting now (scheduling
@@ -327,7 +369,7 @@ describe('Use cases', () => {
         expect(await getPropertyValue('Garden pump', 'state')).toBe('off')
     }, 120000)
 
-    benchmarked('sets the garden lamp color to red at sunset every day', async () => {
+    benchmarked('sets the garden lamp color to red at sunset every day', 'create_automation', async () => {
         // "at sunset" isn't a literal clock time - it's Weather's own 'sunset' property (added
         // in scripts/Entity.ts), and it genuinely changes day to day in reality. Baking today's
         // value into a single fixed cron tick would silently go stale the moment it differs, so
@@ -410,7 +452,7 @@ describe('Use cases', () => {
         await setPropertyValue('Weather', 'sunset', originalSunset)
     }, 120000)
 
-    benchmarked('turns off the office lamp today at 17:00', async () => {
+    benchmarked('turns off the office lamp today at 17:00', 'create_automation', async () => {
         const message = 'Turn off the office lamp today at 17:00'
 
         const existingAutomations = await fetch(`${SERVER_URL}/automations/`).then(r => r.json()) as any[]
@@ -450,7 +492,7 @@ describe('Use cases', () => {
         expect(await getPropertyValue('Office lamp', 'state')).toBe('off')
     }, 120000)
 
-    benchmarked('turns on the office lamp every work day at 08:00', async () => {
+    benchmarked('turns on the office lamp every work day at 08:00', 'create_automation', async () => {
         const message = 'Turn on the office lamp every work day at 08:00'
 
         const existingAutomations = await fetch(`${SERVER_URL}/automations/`).then(r => r.json()) as any[]
@@ -488,7 +530,7 @@ describe('Use cases', () => {
         expect(await getPropertyValue('Office lamp', 'state')).toBe('on')
     }, 120000)
 
-    benchmarked('turns on bathroom lamp for 2 minutes if motion is detected', async () => {
+    benchmarked('turns on bathroom lamp for 2 minutes if motion is detected', 'create_automation', async () => {
         // Combines a condition ('if motion is detected') with a duration ('for 2 minutes') -
         // conditions with no time/repetition cue read as an ongoing rule to keep checking
         // (same as the 'not raining' test above), so this should be 'recurring', with the
@@ -526,7 +568,7 @@ describe('Use cases', () => {
         expect(script).toContain("await entity.set('bathroom lamp', 'state', prev0);")
     }, 120000)
 
-    benchmarked('turns off office lamp if no motion is detected for 15 minutes', async () => {
+    benchmarked('turns off office lamp if no motion is detected for 15 minutes', 'create_automation', async () => {
         // "for 15 minutes" here means the CONDITION itself must have held continuously that
         // long - a fundamentally different thing from create_automation's top-level 'duration'
         // (how long the ACTION's new value persists afterward, tested above) and from the cron
@@ -586,7 +628,7 @@ describe('Use cases', () => {
         expect(await getPropertyValue('Office lamp', 'state')).toBe('on')
     }, 120000)
 
-    benchmarked('turns off all pumps', async () => {
+    benchmarked('turns off all pumps', 'set_property_by_filter', async () => {
         // No time/recurrence wording at all ("every", "at <time>", "if") - an immediate
         // action on a group, not a scheduling request, so this should go through
         // set_property_by_filter directly rather than create_automation. "pump" names a
@@ -612,7 +654,7 @@ describe('Use cases', () => {
         expect(findScheduled('Turn off all pumps', automations)).toBeUndefined()
     }, 120000)
 
-    benchmarked('turns off all lamps in the office building, including the garden', async () => {
+    benchmarked('turns off all lamps in the office building, including the garden', 'set_property_by_filter', async () => {
         // "Office building" contains Office/Basement/Bathroom/Garden (location relations -
         // scripts/Entity.ts), which in turn contain the actual lamps - so this only works if
         // 'location' filtering resolves transitively (EntityService.findByProperties), not
@@ -633,7 +675,7 @@ describe('Use cases', () => {
         expect(await getPropertyValue('Bathroom lamp', 'state')).toBe('off')
     }, 120000)
 
-    benchmarked('turns off all lamps, except garden lamp when dark', async () => {
+    benchmarked('turns off all lamps, except garden lamp when dark', 'create_automation_script', async () => {
         // Same underlying shape as the prior 'leave garden lamp on when dark' wording (one
         // unconditional action - turn off all lamps - with the garden lamp exempted, but ONLY
         // when dark; the exception itself doesn't apply when not dark, so garden lamp is turned
