@@ -1,7 +1,7 @@
 // LLM benchmark: natural-language commands to the SpaceTime agent, each checked for its actual
 // effect on the installation - a property switched, or an automation created that does the
 // right thing when run (PUT /automations/:id/test) under conditions the test sets up. Acts on
-// the demo entities (npm run seed): Garden pump, Office lamp, Weather and so on.
+// the demo entities (npm run seed -- --demo): Garden pump, Office lamp, Weather and so on.
 //
 // The LLM is the one the agent container runs (LLM_PROVIDER/LLM_MODEL in .env, applied with
 // docker compose up -d). Each test logs one line to results/local/llm-<provider>[-<model>].jsonl:
@@ -25,7 +25,7 @@ before(async () => {
     const info = await agentInfo()
     if (info?.entity !== 'entity') throw new Error(`the agent runs the '${info?.entity}' toolset, not 'entity' - set ENTITY=entity (docker-compose.yml) and docker compose up -d`)
     llm = { provider: info.provider, model: info.model }
-    if (!await findEntity('Garden pump')) throw new Error("demo entity 'Garden pump' not found - run 'npm run seed' first")
+    if (!await findEntity('Garden pump')) throw new Error("demo entity 'Garden pump' not found - run 'npm run seed -- --demo' first")
     await writeEnvironment('llm', { llm })
     console.log(`LLM: ${llm.provider} ${llm.model}`)
 })

@@ -37,8 +37,9 @@ Edit `.env`:
   its results.
 - `LLM_PROVIDER`, plus the API key of that provider, e.g.
   ```sh
-  LLM_PROVIDER=cohere
-  COHERE_API_KEY=<your key>
+  LLM_PROVIDER=openrouter
+  LLM_MODEL=google/gemini-2.5-flash
+  OPENROUTER_API_KEY=<your key>
   ```
   `LLM_MODEL` selects a model of the provider. Leave it empty to use the agent's default.
 
@@ -59,7 +60,7 @@ The agent reports the LLM it uses:
 
 ```sh
 curl http://localhost:8030/
-# {"status":"ok","provider":"cohere","model":"...","entity":"entity"}
+# {"status":"ok","provider":"openrouter","model":"google/gemini-2.5-flash","entity":"entity"}
 ```
 
 The web interface is at http://localhost:3000.
@@ -68,23 +69,24 @@ The web interface is at http://localhost:3000.
 
 ```sh
 npm ci
-npm run seed
 ```
 
-`npm run seed` loads two datasets:
+Each benchmark has its own test data, loaded with `npm run seed` just before it runs:
 
-- the **demo data**: a small office building with lamps, pumps, sensors and weather, which the
-  LLM use cases act on (resets those entities)
-- the **campus** for the lamp benchmark: 10 buildings × 10 floors × 10 areas × 10 rooms, with
-  one lamp per room (replaces a previous campus)
+- `--campus`: the **campus** for the lamp benchmark: 10 buildings × 10 floors × 10 areas × 10
+  rooms, with one lamp per room (replaces a previous campus)
+- `--demo`: the **demo data**: a small office building with lamps, pumps, sensors and weather,
+  which the LLM use cases act on (resets those entities). It also deletes the campus.
 
-It is safe to run again. `npm run seed -- --demo` or `-- --campus` loads only one of them.
+They can't be loaded together: with the campus, the LLM's lookups of "all lamps" return 10,006
+lamps, which changes what the LLM use cases measure and makes them far more expensive.
+Seeding is safe to run again.
 
 ## 3. Run the benchmarks
 
 ```sh
-npm run test:lamps     # about 1-2 minutes
-npm run test:llm       # about 3-5 minutes, makes 11 requests to the LLM
+npm run seed -- --campus && npm run test:lamps   # about 1-2 minutes
+npm run seed -- --demo && npm run test:llm       # about 3-5 minutes, 11 requests to the LLM
 ```
 
 Each run prints its results and appends them to `results/local/`:
@@ -100,11 +102,12 @@ The LLM test starts with a question that isn't logged (*What is the capital of L
 model is loaded before the first timed use case.
 
 LLM output varies from run to run, so judge an LLM by its pass rate over several runs.
-`npm run sweep` runs the LLM benchmark 5 times (`REPEAT=10 npm run sweep` for 10). To compare
-several LLMs, list them; the agent is restarted with each one:
+After `npm run seed -- --demo`, `npm run sweep` runs the LLM benchmark 5 times
+(`REPEAT=10 npm run sweep` for 10). To compare several LLMs, list them; the agent is restarted
+with each one:
 
 ```sh
-COMBOS="cohere,openrouter:cohere/command-a-plus,ollama:qwen3:30b-instruct" npm run sweep
+COMBOS="openrouter:google/gemini-2.5-flash,openrouter:openai/gpt-oss-120b,ollama:qwen3:30b-instruct" npm run sweep
 ```
 
 To change the LLM by hand, edit `.env` and run `docker compose up -d agent`.
@@ -135,8 +138,8 @@ median times per mode and number of lamps.
 
 ## Troubleshooting
 
-- **`campus lamps expected, found 0`** or **`demo entity 'Garden pump' not found`**: run
-  `npm run seed`.
+- **`campus lamps expected, found 0`**: run `npm run seed -- --campus`.
+  **`demo entity 'Garden pump' not found`**: run `npm run seed -- --demo`.
 - **`the server can't reach the mock lamp service`**: the server container calls the mock at
   `http://host.docker.internal:8099`. Check that a firewall allows incoming connections to
   Node on port 8099. On Linux, `host.docker.internal` is set up by `extra_hosts` in

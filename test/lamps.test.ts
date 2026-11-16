@@ -1,4 +1,4 @@
-// Lamp benchmark: switches on 10, 100, 1,000 and 10,000 lamps of the campus (npm run seed) from
+// Lamp benchmark: switches on 10, 100, 1,000 and 10,000 lamps of the campus (npm run seed -- --campus) from
 // an automation, through an entity connector, and measures how long it takes until every lamp is
 // on. Every lamp's 'state' is linked to the 'Tuya mock' entity connector, so each change becomes a
 // command the server sends to the lamp service - here a mock (lib/mock-tuya.ts) on this machine
@@ -81,7 +81,7 @@ describe('Campus lamp switch', () => {
         await mock.start(MOCK_PORT)
         connector = (await ensureConnector(LAMP_MAX_CONCURRENCY)).connector
         const lamps: any[] = await api('POST', '/entities/find', { filter: { type: 'lamp', location: 'campus' } })
-        assert.equal(lamps.length, LAMP_COUNT, `${LAMP_COUNT} campus lamps expected, found ${lamps.length} - run 'npm run seed' first`)
+        assert.equal(lamps.length, LAMP_COUNT, `${LAMP_COUNT} campus lamps expected, found ${lamps.length} - run 'npm run seed -- --campus' first`)
 
         // Reachability of the mock from the server container, before timing anything.
         await api('DELETE', `/propertyCommands?entityConnectorId=${connector.id}`)
