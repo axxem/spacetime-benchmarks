@@ -3,7 +3,7 @@
 // results/local/llm-<provider>[-<model>].jsonl.
 //
 // To compare LLMs in one go, list them in COMBOS as provider[:model], comma separated, e.g.
-//   COMBOS="cohere,openrouter:cohere/command-a-plus" npm run sweep
+//   COMBOS="openrouter:google/gemini-2.5-flash,openrouter:openai/gpt-oss-120b" npm run sweep
 // The agent container is restarted with each one (docker compose up -d agent), and is left
 // running with the last; `docker compose up -d agent` brings back the one in .env. Each
 // provider's API key must be in .env.

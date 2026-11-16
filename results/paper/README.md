@@ -1,56 +1,74 @@
 # Results reported in the paper
 
-## LLM use cases (Tables 5 and 6)
+## LLM use cases (Tables 4, 5 and 6)
 
-The raw logs of the LLM benchmark in the paper: 10 LLMs, each running the 10 use cases 5 times,
-from 28 October to 2 November 2026. One JSON line per use case per run: `status` (pass/fail),
-`message` (the prompt), `llmProvider`, `llmModel`, `durationSeconds` (the chat round trip),
-`timestamp`, the LLM's `response`, and the `script` it generated or ran.
+The raw logs of the LLM benchmark in the paper: 9 LLMs, each running the 10 use cases 5 times.
+One JSON line per use case per run: `status` (pass/fail), `message` (the prompt),
+`llmProvider`, `llmModel`, `durationSeconds` (the chat round trip), `timestamp`, the LLM's
+`response`, the `script` it generated or ran, the `expectedTool`, the `tools` it called (in
+order) and `rightTool` (whether the tools that change something are exactly the expected one).
 
-| File | Model | Runs | Passed | Run date |
-|---|---|---:|---:|---|
-| `llm-gemini-gemini-2.5-flash.jsonl` | gemini-2.5-flash (Google) | 5 | 48/50 | 28 Oct |
-| `llm-openrouter-cohere_command-a-plus.jsonl` | cohere/command-a-plus (OpenRouter) | 5 | 46/50 | 2 Nov |
-| `llm-openrouter-deepseek_deepseek-chat.jsonl` | deepseek/deepseek-chat (OpenRouter) | 5 | 46/50 | 29 Oct |
-| `llm-ollama-Qwen3.8_27B.jsonl` | Qwen3.8:27B (Ollama) | 5 | 45/50 | 28 Oct |
-| `llm-ollama-qwen3_30b-instruct.jsonl` | qwen3:30b-instruct (Ollama) | 5 | 45/50 | 28 Oct |
-| `llm-ollama-glm-4.7-flash.jsonl` | glm-4.7-flash (Ollama) | 5 | 45/50 | 28 Oct |
-| `llm-ollama-bonsai-2_27b.jsonl` | bonsai-2:27b (Ollama) | 5 | 42/50 | 29 Oct |
-| `llm-ollama-devstral-small-2.jsonl` | devstral-small-2 (Ollama) | 5 | 37/50 | 29 Oct |
-| `llm-ollama-bonsai-2.jsonl` | bonsai-2 (Ollama) | 5 | 33/50 | 28 Oct |
-| `llm-ollama-mistral-small3.2_24b.jsonl` | mistral-small3.2:24b (Ollama) | 5 | 30/50 | 29 Oct |
+| File | Model | Passed | Right tool | Time (s) | Cost ($) | Run date |
+|---|---|---:|---:|---:|---:|---|
+| `llm-openrouter-google_gemini-2.5-flash.jsonl` | gemini-2.5-flash (OpenRouter) | 49/50 | 49 | 89.9 | 0.12 | 16 Nov |
+| `llm-openrouter-openai_gpt-oss-120b.jsonl` | openai/gpt-oss-120b (OpenRouter) | 47/50 | 46 | 511.2 | 0.09 | 16 Nov |
+| `llm-openrouter-deepseek_deepseek-chat.jsonl` | deepseek/deepseek-chat (OpenRouter) | 46/50 | 48 | 314.4 | 0.27 | 16 Nov |
+| `llm-ollama-Qwen3.8_27B.jsonl` | Qwen3.8:27B (Ollama) | 45/50 | 45 | 2335.2 | 0.06 | 13 Nov |
+| `llm-ollama-glm-4.7-flash.jsonl` | glm-4.7-flash (Ollama) | 44/50 | 46 | 1578.9 | 0.04 | 13 Nov |
+| `llm-ollama-qwen3_30b-instruct.jsonl` | qwen3:30b-instruct (Ollama) | 42/50 | 46 | 631.1 | 0.02 | 13 Nov |
+| `llm-ollama-bonsai-2_27b.jsonl` | bonsai-2:27b (Ollama) | 41/50 | 40 | 2247.2 | 0.06 | 13 Nov |
+| `llm-ollama-bonsai-2.jsonl` | bonsai-2 (9b, Ollama) | 36/50 | 30 | 803.6 | 0.02 | 13 Nov |
+| `llm-ollama-devstral-small-2.jsonl` | devstral-small-2 (Ollama) | 33/50 | 34 | 1607.0 | 0.04 | 13 Nov |
 
 `npm run summarize -- results/paper` prints the passes per use case (Table 5) and the total and
 mean round trip time per model (Table 6) from these files.
 
-**How they were measured.** With the use case test suite that `test/llm-usecases.test.ts` was
-ported from: the same prompts and checks, run with `bun:test` against the development version of
-SpaceTime that preceded release 1.5.0 (server and agent run from source, git commit `6ff41ae4`),
-on a MacBook Pro (Apple M5 Pro, 48 GB unified memory). The local models ran in Ollama 0.40.11
-on the same machine. Model parameters (paper, Table 4):
+**Cost.** For the OpenRouter models, the difference in the OpenRouter account's usage before
+and after the run, including the 5 warm-up requests that load the model (`What is the capital
+of Laos?`), which are not logged. For the local models, an indicative $0.091 per hour of
+round trip time: the hardware's purchase price ($4,000) over five years of continuous use
+(5 x 365 x 24 h), without electricity.
+
+**How they were measured.** With `test/llm-usecases.test.ts`'s use cases and checks, run with
+`bun:test` from the SpaceTime source (server and agent run natively, not in Docker), on a
+MacBook Pro (Apple M5 Pro, 48 GB unified memory). The local models ran in Ollama 0.40.11 on
+the same machine. Model parameters (paper, Table 4):
 
 | Model | Provider | Quantization | Temperature | Top p | Top k |
 |---|---|---|---:|---:|---:|
-| gemini-2.5-flash | Google | - | 0.1 | 1 | - |
-| cohere/command-a-plus, deepseek/deepseek-chat | OpenRouter | - | 0.1 | 1 | - |
+| gemini-2.5-flash, openai/gpt-oss-120b, deepseek/deepseek-chat | OpenRouter | - | 0.1 | 1 | - |
 | Qwen3.8:27B, qwen3:30b-instruct | Ollama | Q4_K_M | 0.7 | 0.9 | 20 |
 | glm-4.7-flash, devstral-small-2 | Ollama | Q4_K_M | 0.7 | 0.9 | 40 |
 | bonsai-2:27b, bonsai-2 (9b) | Ollama | Q2_0 | 0.7 | 0.9 | 20 |
 
-**Reproducing them.** No Docker image of that development version was released; release 1.5.0
-is the first one that contains it (the earlier 1.4.0 image on Docker Hub is from June 2026 and
-much older). Between the benchmark runs and 1.5.0, the agent's system prompt and the tools and
-tool descriptions presented to the LLM are unchanged. What changed is how the server stores and
-runs the generated automations (moved from MongoDB to Postgres) and the agent's document store,
-which these use cases don't use. A run against 1.5.0 therefore gives the LLMs the same input,
-but LLM output varies between runs: compare pass rates over several runs (`npm run sweep`), not
-single results.
+For OpenRouter the agent sets no sampling parameters, so these are the defaults of the
+llamaindex OpenAI client; OpenRouter chose the provider of each request (no provider pinned).
 
-These logs have no `runId`: each run wrote one line per use case, in order. In the
-devstral-small-2 log, line 28 is the 3rd run of *Turn off all pumps*, which failed before its
-chat request was sent (0 s, no response). That version of the test logged it under the next
-prompt, *Turn off all lamps in the office building*. The data is left as recorded, so summarize
-shows 4 and 6 results for those two prompts.
+The agent differs between the two run dates:
+
+- **13 November** (local models): SpaceTime core commit `ec8a8e34`. Its `create_automation`
+  tool states that "today", "tomorrow" or a date means a one-off automation, so the LLM should
+  not ask whether it is once or every day.
+- **16 November** (OpenRouter models): commit `e01ebf4a`, which adds two changes to the agent.
+  A tool call to a name that is not a tool (e.g. `Entity.filter`, a script function) is
+  answered with an error the LLM can recover from, instead of ending the request. And a
+  request stops after 20 LLM steps (`AGENT_MAX_STEPS`), which no passing request came near.
+
+**Data.** The use cases act on the demo data (`npm run seed -- --demo`). bonsai-2 and
+bonsai-2:27b ran while the 21,111 campus entities of the lamp benchmark were also loaded: the
+lookups of "all lamps" then return 10,006 lamps. The other models ran on the demo data alone.
+
+**Notes on the logs.**
+
+- Qwen3.8:27B and qwen3:30b-instruct: the *Turn off all pumps* lines are a rerun of that use
+  case alone (5 times each). In the full runs it failed every time, because an earlier run of
+  another model had left an automation named *Turn off all pumps* behind, which the test
+  checks against. Rerun on its own, it took Qwen3.8:27B about 13 s instead of about 33 s.
+- A failure logged with 0 s and no tools is a test timeout: no response arrived.
+
+**Reproducing them.** Run the agent from those commits, or from a release that includes them.
+LLM output varies between runs: compare pass rates over several runs (`npm run sweep`), not
+single results.
 
 ## Lamps (Table 7)
 
